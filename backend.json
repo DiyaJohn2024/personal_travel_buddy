@@ -1,0 +1,160 @@
+{
+  "entities": {
+    "Trip": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Trip",
+      "type": "object",
+      "description": "Represents a travel trip.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Trip entity."
+        },
+        "location": {
+          "type": "string",
+          "description": "The location of the trip."
+        },
+        "date": {
+          "type": "string",
+          "description": "The date of the trip.",
+          "format": "date-time"
+        },
+        "category": {
+          "type": "string",
+          "description": "The category of the trip (e.g., Adventure, Relaxing)."
+        }
+      },
+      "required": [
+        "id",
+        "location",
+        "date",
+        "category"
+      ]
+    },
+    "Memory": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Memory",
+      "type": "object",
+      "description": "Represents a memory associated with a trip.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Memory entity."
+        },
+        "tripId": {
+          "type": "string",
+          "description": "Reference to Trip. (Relationship: Trip 1:N Memory)"
+        },
+        "title": {
+          "type": "string",
+          "description": "The title of the memory."
+        },
+        "description": {
+          "type": "string",
+          "description": "A description of the memory."
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "URL of the photo associated with the memory.",
+          "format": "uri"
+        },
+        "tagIds": {
+          "type": "array",
+          "description": "References to Tags. (Relationship: Tag N:N Memory)",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "tripId",
+        "title",
+        "description"
+      ]
+    },
+    "Tag": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Tag",
+      "type": "object",
+      "description": "Represents a tag that can be associated with memories.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Tag entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the tag."
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/trips/{tripId}",
+        "definition": {
+          "entityName": "Trip",
+          "schema": {
+            "$ref": "#/backend/entities/Trip"
+          },
+          "description": "Path for Trip entities.  Firestore is not being used, so this is not actually a valid path.",
+          "params": [
+            {
+              "name": "tripId",
+              "description": "Unique identifier for a Trip."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/trips/{tripId}/memories/{memoryId}",
+        "definition": {
+          "entityName": "Memory",
+          "schema": {
+            "$ref": "#/backend/entities/Memory"
+          },
+          "description": "Path for Memory entities, nested under Trip. Firestore is not being used, so this is not actually a valid path.",
+          "params": [
+            {
+              "name": "tripId",
+              "description": "Unique identifier for the parent Trip."
+            },
+            {
+              "name": "memoryId",
+              "description": "Unique identifier for a Memory."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/tags/{tagId}",
+        "definition": {
+          "entityName": "Tag",
+          "schema": {
+            "$ref": "#/backend/entities/Tag"
+          },
+          "description": "Path for Tag entities. Firestore is not being used, so this is not actually a valid path.",
+          "params": [
+            {
+              "name": "tagId",
+              "description": "Unique identifier for a Tag."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "Given the application requirements explicitly state that Firestore should *not* be used and that data should be stored in mock JSON and local state, a Firestore data structure is not necessary. The user has specified that Firebase Authentication is the *only* Firebase service to be used. Therefore, no Firestore collections are created."
+  }
+}
