@@ -2,7 +2,7 @@
 Front-end and back-end for SpotSaver – Travel Memory App
 
 # Travel Memory Saver App
-This is a demo project for Git Assignment 2.  
+This is a demo project for Git Assignment 2 on Integrated Full-Stack Vibe Coding + Advanced Git Workflow.  
 It allows users to enter and store place details through a simple form UI.
 
 ## Student Contributions
