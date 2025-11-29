@@ -1,21 +1,38 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/lib/auth';
+import { db } from '@/integrations/firebase/client';
+import { collection, query, where, getDocs, deleteDoc, doc, orderBy } from 'firebase/firestore';
+import { useFirebaseAuth } from '@/lib/firebase-auth';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Plus, Calendar, Tag } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { AddMemoryDialog } from '@/components/AddMemoryDialog';
-import type { Database } from '@/integrations/supabase/types';
+interface Trip {
+  id: string;
+  user_id: string;
+  location: string;
+  date: string;
+  category: string;
+  created_at?: string;
+}
 
-type Trip = Database['public']['Tables']['trips']['Row'];
-type Memory = Database['public']['Tables']['memories']['Row'];
+interface Memory {
+  id: string;
+  trip_id: string;
+  user_id: string;
+  title: string;
+  description?: string;
+  photo_url?: string;
+  tags?: string[];
+  date: string;
+  created_at?: string;
+}
 
 const TripDetail = () => {
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
+  const { user } = useFirebaseAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [trip, setTrip] = useState<Trip | null>(null);
@@ -30,57 +47,72 @@ const TripDetail = () => {
 
   const fetchTripAndMemories = async () => {
     if (!user || !id) return;
+  
+    try {
+      // Fetch the trip
+      const tripsRef = collection(db, 'trips');
+      const tripQuery = query(tripsRef, where('user_id', '==', user.uid));
+      const tripSnapshot = await getDocs(tripQuery);
+      
+      const tripDoc = tripSnapshot.docs.find(doc => doc.id === id);
+      if (!tripDoc) {
+        toast({
+          title: 'Error',
+          description: 'Trip not found',
+          variant: 'destructive',
+        });
+        navigate('/dashboard');
+        return;
+      }
+  
+      setTrip({ id: tripDoc.id, ...tripDoc.data() } as Trip);
+  
+      // Fetch memories for this trip
+      const memoriesRef = collection(db, 'memories');
+      const memoriesQuery = query(
+        memoriesRef,
+        where('trip_id', '==', id)
+        //orderBy('date', 'desc')
+      );
+      const memoriesSnapshot = await getDocs(memoriesQuery);
+      console.log('🎯 Raw memory docs:', memoriesSnapshot.docs.map(d => d.data()));
+      console.log('🎯 Number of memories found:', memoriesSnapshot.docs.length);
 
-    const { data: tripData, error: tripError } = await supabase
-      .from('trips')
-      .select('*')
-      .eq('id', id)
-      .eq('user_id', user.id)
-      .single();
-
-    if (tripError) {
+      const memoriesData = memoriesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Memory[];
+  
+      setMemories(memoriesData);
+    } catch (error: any) {
+      console.error('❌ TripDetail error:', error);
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Error code:', error.code);
       toast({
         title: 'Error',
-        description: 'Failed to load trip',
+        description: 'Failed to load trip details',
         variant: 'destructive',
       });
-      navigate('/dashboard');
-      return;
+    } finally {
+      setLoading(false);
     }
-
-    const { data: memoriesData, error: memoriesError } = await supabase
-      .from('memories')
-      .select('*')
-      .eq('trip_id', id)
-      .order('date', { ascending: false });
-
-    if (memoriesError) {
-      toast({
-        title: 'Error',
-        description: 'Failed to load memories',
-        variant: 'destructive',
-      });
-    }
-
-    setTrip(tripData);
-    setMemories(memoriesData || []);
-    setLoading(false);
   };
+  
 
   const handleDeleteMemory = async (memoryId: string) => {
-    const { error } = await supabase.from('memories').delete().eq('id', memoryId);
-
-    if (error) {
+    try {
+      await deleteDoc(doc(db, 'memories', memoryId));
+      toast({ title: 'Memory deleted' });
+      fetchTripAndMemories();
+    } catch (error: any) {
       toast({
         title: 'Error',
         description: 'Failed to delete memory',
         variant: 'destructive',
       });
-    } else {
-      toast({ title: 'Memory deleted' });
-      fetchTripAndMemories();
     }
   };
+  
 
   if (loading) {
     return (

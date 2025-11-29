@@ -1,14 +1,20 @@
 import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/integrations/firebase/client';
+import { doc, updateDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import type { Database } from '@/integrations/supabase/types';
 
-type Trip = Database['public']['Tables']['trips']['Row'];
+interface Trip {
+  id: string;
+  location: string;
+  date: string;
+  category: string;
+  [key: string]: any;
+}
 
 interface EditTripDialogProps {
   trip: Trip;
@@ -20,33 +26,32 @@ interface EditTripDialogProps {
 export const EditTripDialog = ({ trip, categories, onClose, onTripUpdated }: EditTripDialogProps) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState(trip.category);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     const formData = new FormData(e.currentTarget);
 
-    const { error } = await supabase
-      .from('trips')
-      .update({
+    try {
+      const tripRef = doc(db, 'trips', trip.id);
+      await updateDoc(tripRef, {
         location: formData.get('location') as string,
         date: formData.get('date') as string,
-        category: formData.get('category') as string,
-      })
-      .eq('id', trip.id);
+        category: selectedCategory,
+      });
 
-    setLoading(false);
-
-    if (error) {
+      toast({ title: 'Trip updated successfully!' });
+      onClose();
+      onTripUpdated();
+    } catch (error: any) {
       toast({
         title: 'Error',
         description: 'Failed to update trip',
         variant: 'destructive',
       });
-    } else {
-      toast({ title: 'Trip updated successfully!' });
-      onClose();
-      onTripUpdated();
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -67,7 +72,7 @@ export const EditTripDialog = ({ trip, categories, onClose, onTripUpdated }: Edi
           </div>
           <div className="space-y-2">
             <Label htmlFor="category">Category</Label>
-            <Select name="category" defaultValue={trip.category} required>
+            <Select value={selectedCategory} onValueChange={setSelectedCategory} required>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>

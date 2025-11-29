@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/lib/auth';
+import { db } from '@/integrations/firebase/client';
+import { collection, query, where, getDocs, deleteDoc, doc, orderBy } from 'firebase/firestore';
+import { useFirebaseAuth } from '@/lib/firebase-auth';
 import { Button } from '@/components/ui/button';
 import { Plus, LogOut, MapPin, Calendar, Plane } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,13 +10,29 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { AddTripDialog } from '@/components/AddTripDialog';
 import { EditTripDialog } from '@/components/EditTripDialog';
-import type { Database } from '@/integrations/supabase/types';
+interface Trip {
+  id: string;
+  user_id: string;
+  location: string;
+  date: string;
+  category: string;
+  created_at?: string;
+}
 
-type Trip = Database['public']['Tables']['trips']['Row'];
-type Memory = Database['public']['Tables']['memories']['Row'];
+interface Memory {
+  id: string;
+  trip_id: string;
+  user_id: string;
+  title: string;
+  description?: string;
+  photo_url?: string;
+  tags?: string[];
+  date: string;
+  created_at?: string;
+}
 
 const Dashboard = () => {
-  const { user, signOut } = useAuth();
+  const { user, signOut } = useFirebaseAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -33,59 +50,68 @@ const Dashboard = () => {
 
   const fetchTrips = async () => {
     if (!user) return;
+    console.log('🔥 Fetching data for user:', user.uid); // <-- Should see this!
+
+    try {
+      // Fetch trips
+      const tripsRef = collection(db, 'trips');
+      console.log('📍 Trips collection reference:', tripsRef); // <-- Should see this!
+      const tripsQuery = query(
+        tripsRef, 
+        where('user_id', '==', user.uid)
+        //orderBy('date', 'desc')
+      );
+      console.log('🔍 Running trips query...');
+
+      const tripsSnapshot = await getDocs(tripsQuery);
+      console.log('✅ Trips found:', tripsSnapshot.docs.length);
+
+      const tripsData = tripsSnapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        ...doc.data() 
+      })) as Trip[];
+      setTrips(tripsData);
   
-    // Fetch trips (existing code)
-    const { data, error } = await supabase
-      .from('trips')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('date', { ascending: false });
+      // Fetch memories
+      const memoriesRef = collection(db, 'memories');
+      const memoriesQuery = query(
+        memoriesRef,
+        where('user_id', '==', user.uid)
+        //orderBy('created_at', 'desc')
+      );
+      const memoriesSnapshot = await getDocs(memoriesQuery);
+      const memoriesData = memoriesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Memory[];
+      setAllMemories(memoriesData);
   
-    if (error) {
+    } catch (error: any) {
       toast({
         title: 'Error',
-        description: 'Failed to load trips',
+        description: 'Failed to load data',
         variant: 'destructive',
       });
-    } else {
-      setTrips(data || []);
+    } finally {
+      setLoading(false);
     }
-  
-    // NEW: Fetch ALL memories for "places to visit"
-    const { data: memoriesData, error: memoriesError } = await supabase
-      .from('memories')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
-  
-    if (memoriesError) {
-      toast({
-        title: 'Error',
-        description: 'Failed to load memories',
-        variant: 'destructive',
-      });
-    } else {
-      setAllMemories(memoriesData || []);
-    }
-  
-    setLoading(false);
   };
   
 
   const handleDeleteTrip = async (tripId: string) => {
-    const { error } = await supabase.from('trips').delete().eq('id', tripId);
-
-    if (error) {
+    try {
+      await deleteDoc(doc(db, 'trips', tripId));
+      toast({ title: 'Trip deleted' });
+      fetchTrips();
+    } catch (error: any) {
       toast({
         title: 'Error',
         description: 'Failed to delete trip',
         variant: 'destructive',
       });
-    } else {
-      toast({ title: 'Trip deleted' });
-      fetchTrips();
     }
   };
+  
 
   const handleSignOut = async () => {
     await signOut();
@@ -142,17 +168,23 @@ const placesToVisit = allMemories
     </div>
       {/* Header */}
       <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-20 shadow-sm">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Wanderlog</h1>
-          <div className="flex items-center gap-4">
-            <AddTripDialog onTripAdded={fetchTrips} categories={categories} />
-            <Button variant="outline" onClick={handleSignOut}>
-              <LogOut className="h-4 w-4 mr-2" />
-              Sign Out
-            </Button>
-          </div>
+      <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+        <h1 className="text-3xl font-bold">Wanderlog</h1>
+        <div className="flex items-center gap-4">
+          {user?.displayName && (
+            <p className="text-sm text-muted-foreground hidden md:block">
+              Hello, <span className="font-semibold text-foreground">{user.displayName}</span>! 👋
+            </p>
+          )}
+          <AddTripDialog onTripAdded={fetchTrips} categories={categories} />
+          <Button variant="outline" onClick={handleSignOut}>
+            <LogOut className="h-4 w-4 mr-2" />
+            Sign Out
+          </Button>
         </div>
-      </header>
+      </div>
+    </header>
+
 
       <main className="container mx-auto px-4 py-8">
         {/* Category Filter */}

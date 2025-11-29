@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/lib/auth';
+import { db, storage } from '@/integrations/firebase/client';
+import { collection, addDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { useFirebaseAuth } from '@/lib/firebase-auth';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -15,7 +17,7 @@ interface AddMemoryDialogProps {
 }
 
 export const AddMemoryDialog = ({ tripId, onMemoryAdded }: AddMemoryDialogProps) => {
-  const { user } = useAuth();
+  const { user } = useFirebaseAuth();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -40,27 +42,24 @@ export const AddMemoryDialog = ({ tripId, onMemoryAdded }: AddMemoryDialogProps)
     // Upload photo if provided
     if (photoFile) {
       setUploadingPhoto(true);
-      const fileExt = photoFile.name.split('.').pop();
-      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+      try {
+        const fileExt = photoFile.name.split('.').pop();
+        const fileName = `${user.uid}/${Date.now()}.${fileExt}`;
+        const storageRef = ref(storage, `travel-photos/${fileName}`);
 
-      const { error: uploadError } = await supabase.storage
-        .from('travel-photos')
-        .upload(fileName, photoFile);
-
-      setUploadingPhoto(false);
-
-      if (uploadError) {
+        await uploadBytes(storageRef, photoFile);
+        photoUrl = await getDownloadURL(storageRef);
+      } catch (error: any) {
         toast({
           title: 'Error',
           description: 'Failed to upload photo',
           variant: 'destructive',
         });
         setLoading(false);
+        setUploadingPhoto(false);
         return;
       }
-
-      const { data: urlData } = supabase.storage.from('travel-photos').getPublicUrl(fileName);
-      photoUrl = urlData.publicUrl;
+      setUploadingPhoto(false);
     }
 
     // Parse tags
@@ -70,29 +69,30 @@ export const AddMemoryDialog = ({ tripId, onMemoryAdded }: AddMemoryDialogProps)
       .map((tag) => tag.trim())
       .filter((tag) => tag);
 
-    const { error } = await supabase.from('memories').insert({
-      trip_id: tripId,
-      user_id: user.id,
-      title: formData.get('title') as string,
-      description: formData.get('description') as string,
-      photo_url: photoUrl,
-      tags,
-      date: formData.get('date') as string,
-    });
+    try {
+      await addDoc(collection(db, 'memories'), {
+        trip_id: tripId,
+        user_id: user.uid,
+        title: formData.get('title') as string,
+        description: formData.get('description') as string,
+        photo_url: photoUrl,
+        tags,
+        date: formData.get('date') as string,
+        created_at: new Date().toISOString(),
+      });
 
-    setLoading(false);
-
-    if (error) {
+      toast({ title: 'Memory added successfully!' });
+      setOpen(false);
+      setPhotoFile(null);
+      onMemoryAdded();
+    } catch (error: any) {
       toast({
         title: 'Error',
         description: 'Failed to add memory',
         variant: 'destructive',
       });
-    } else {
-      toast({ title: 'Memory added successfully!' });
-      setOpen(false);
-      setPhotoFile(null);
-      onMemoryAdded();
+    } finally {
+      setLoading(false);
     }
   };
 

@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/lib/auth';
+import { db } from '@/integrations/firebase/client';
+import { collection, addDoc } from 'firebase/firestore';
+import { useFirebaseAuth } from '@/lib/firebase-auth';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -15,10 +16,11 @@ interface AddTripDialogProps {
 }
 
 export const AddTripDialog = ({ onTripAdded, categories }: AddTripDialogProps) => {
-  const { user } = useAuth();
+  const { user } = useFirebaseAuth();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('');
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -27,25 +29,27 @@ export const AddTripDialog = ({ onTripAdded, categories }: AddTripDialogProps) =
     setLoading(true);
     const formData = new FormData(e.currentTarget);
 
-    const { error } = await supabase.from('trips').insert({
-      user_id: user.id,
-      location: formData.get('location') as string,
-      date: formData.get('date') as string,
-      category: formData.get('category') as string,
-    });
+    try {
+      await addDoc(collection(db, 'trips'), {
+        user_id: user.uid,
+        location: formData.get('location') as string,
+        date: formData.get('date') as string,
+        category: selectedCategory,
+        created_at: new Date().toISOString(),
+      });
 
-    setLoading(false);
-
-    if (error) {
+      toast({ title: 'Trip added successfully!' });
+      setOpen(false);
+      setSelectedCategory('');
+      onTripAdded();
+    } catch (error: any) {
       toast({
         title: 'Error',
         description: 'Failed to add trip',
         variant: 'destructive',
       });
-    } else {
-      toast({ title: 'Trip added successfully!' });
-      setOpen(false);
-      onTripAdded();
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -72,7 +76,7 @@ export const AddTripDialog = ({ onTripAdded, categories }: AddTripDialogProps) =
           </div>
           <div className="space-y-2">
             <Label htmlFor="category">Category</Label>
-            <Select name="category" required>
+            <Select value={selectedCategory} onValueChange={setSelectedCategory} required>
               <SelectTrigger>
                 <SelectValue placeholder="Select category" />
               </SelectTrigger>
@@ -85,7 +89,7 @@ export const AddTripDialog = ({ onTripAdded, categories }: AddTripDialogProps) =
               </SelectContent>
             </Select>
           </div>
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="w-full" disabled={loading || !selectedCategory}>
             {loading ? 'Adding...' : 'Add Trip'}
           </Button>
         </form>

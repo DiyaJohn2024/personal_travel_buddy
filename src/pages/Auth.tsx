@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/lib/auth';
+import { useFirebaseAuth } from '@/lib/firebase-auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import heroImage from '@/assets/hero-travel.jpg';
@@ -15,7 +14,7 @@ const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user , signUp, signIn} = useFirebaseAuth();
 
   useEffect(() => {
     if (user) {
@@ -26,60 +25,55 @@ const Auth = () => {
   const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
-
+  
     const formData = new FormData(e.currentTarget);
     const name = formData.get('name') as string;
     const email = formData.get('email') as string;
     const password = formData.get('password') as string;
-
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { name },
-        emailRedirectTo: `${window.location.origin}/dashboard`,
-      },
-    });
-
-    setIsLoading(false);
-
-    if (error) {
+  
+    try {
+      await signUp(email, password, name);
+      toast({
+        title: 'Success!',
+        description: 'Account created successfully!',
+      });
+    } catch (error: any) {
       toast({
         title: 'Error',
         description: error.message,
         variant: 'destructive',
       });
-    } else {
-      toast({
-        title: 'Success!',
-        description: 'Account created. You can now log in.',
-      });
+    } finally {
+      setIsLoading(false);
     }
   };
+  
+  
 
   const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
-
+  
     const formData = new FormData(e.currentTarget);
     const email = formData.get('email') as string;
     const password = formData.get('password') as string;
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    setIsLoading(false);
-
-    if (error) {
+  
+    try {
+      await signIn(email, password);
+      toast({
+        title: 'Success!',
+        description: 'Signed in successfully!',
+      });
+    } catch (error: any) {
       toast({
         title: 'Error',
         description: error.message,
         variant: 'destructive',
       });
+    } finally {
+      setIsLoading(false);
     }
-  };
+  };  
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2">
